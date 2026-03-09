@@ -34,8 +34,8 @@
 /* ── Platform abstraction ────────────────────────────────────────────────── */
 
 #ifdef _KERNEL_MODE
-    /* Kernel-mode: WDK headers */
-    #include <ntddk.h>
+    /* Kernel-mode: use fltKernel.h (superset of ntddk.h, avoids redefinition conflicts) */
+    #include <fltKernel.h>
     #include <ntstrsafe.h>
 #else
     /* User-mode */
