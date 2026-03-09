@@ -7,6 +7,7 @@
  */
 
 #include <windows.h>
+#include "telemetry.h"
 
 BOOL APIENTRY
 DllMain(
