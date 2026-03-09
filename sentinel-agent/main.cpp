@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <cstdio>
+#include "telemetry.h"
 
 int main(int argc, char* argv[])
 {
@@ -15,5 +16,6 @@ int main(int argc, char* argv[])
     (void)argv;
 
     std::printf("SentinelPOC Agent v1.0.0 (stub)\n");
+    std::printf("  sizeof(SENTINEL_EVENT) = %zu bytes\n", sizeof(SENTINEL_EVENT));
     return 0;
 }
