@@ -1,0 +1,58 @@
+# Build directories
+build/
+out/
+cmake-build-*/
+x64/
+x86/
+Debug/
+Release/
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.suo
+*.sdf
+*.opensdf
+*.db
+*.opendb
+*.ipch
+*.aps
+*.ncb
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Compiled binaries
+*.exe
+*.dll
+*.sys
+*.lib
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.cat
+*.inf.bak
+
+# Driver signing
+*.cer
+*.pfx
+*.pvk
+
+# Package directories
+packages/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS files
+Thumbs.db
+.DS_Store
