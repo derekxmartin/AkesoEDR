@@ -1,20 +1,130 @@
 /*
  * sentinel-drv/main.c
- * Kernel-mode WDM driver entry point (stub).
+ * SentinelPOC kernel-mode WDM driver — entry point and lifecycle.
  *
- * This file will contain DriverEntry and DriverUnload once Phase 1 begins.
- * For now it serves as a compilation placeholder.
+ * DriverEntry:
+ *   1. Create device object + symbolic link
+ *   2. Register minifilter (required for FltCreateCommunicationPort)
+ *   3. Create filter communication port for agent connection
+ *   4. Start minifilter filtering
+ *
+ * DriverUnload:
+ *   Reverse all of the above in safe order.
+ *
+ * IRQL: DriverEntry and DriverUnload run at PASSIVE_LEVEL.
  */
 
-#include <ntddk.h>
+#include <fltKernel.h>
+#include <ntstrsafe.h>
+
+#include "constants.h"
+#include "telemetry.h"
+#include "comms.h"
+
+/* ── Forward declarations ────────────────────────────────────────────────── */
 
 DRIVER_INITIALIZE DriverEntry;
-DRIVER_UNLOAD     DriverUnload;
+DRIVER_UNLOAD     SentinelUnload;
+
+/* Minifilter unload callback */
+NTSTATUS
+SentinelFilterUnload(
+    _In_ FLT_FILTER_UNLOAD_FLAGS Flags
+);
+
+/* Minifilter instance setup — accept all volumes for now */
+NTSTATUS
+SentinelInstanceSetup(
+    _In_ PCFLT_RELATED_OBJECTS    FltObjects,
+    _In_ FLT_INSTANCE_SETUP_FLAGS Flags,
+    _In_ DEVICE_TYPE              VolumeDeviceType,
+    _In_ FLT_FILESYSTEM_TYPE      VolumeFilesystemType
+);
+
+/* ── Section placement ───────────────────────────────────────────────────── */
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-#pragma alloc_text(PAGE, DriverUnload)
+#pragma alloc_text(PAGE, SentinelUnload)
+#pragma alloc_text(PAGE, SentinelFilterUnload)
+#pragma alloc_text(PAGE, SentinelInstanceSetup)
 #endif
+
+/* ── Globals ─────────────────────────────────────────────────────────────── */
+
+PDEVICE_OBJECT  g_DeviceObject  = NULL;
+PFLT_FILTER     g_FilterHandle  = NULL;
+
+/* ── Minifilter registration structures ──────────────────────────────────── */
+
+/*
+ * No I/O operation callbacks yet — those come in Phase 5 (minifilter).
+ * We register the filter now solely to get FltCreateCommunicationPort.
+ */
+
+const FLT_CONTEXT_REGISTRATION g_ContextRegistration[] = {
+    { FLT_CONTEXT_END }
+};
+
+const FLT_OPERATION_REGISTRATION g_OperationCallbacks[] = {
+    { IRP_MJ_OPERATION_END }
+};
+
+const FLT_REGISTRATION g_FilterRegistration = {
+    sizeof(FLT_REGISTRATION),               /* Size */
+    FLT_REGISTRATION_VERSION,               /* Version */
+    0,                                      /* Flags */
+    g_ContextRegistration,                  /* Context */
+    g_OperationCallbacks,                   /* OperationRegistration */
+    SentinelFilterUnload,                   /* FilterUnloadCallback */
+    SentinelInstanceSetup,                  /* InstanceSetupCallback */
+    NULL,                                   /* InstanceQueryTeardownCallback */
+    NULL,                                   /* InstanceTeardownStartCallback */
+    NULL,                                   /* InstanceTeardownCompleteCallback */
+    NULL, NULL, NULL                        /* GenerateFileName, NormalizeNameComponent, NormalizeContextCleanup */
+};
+
+/* ── Minifilter callbacks ────────────────────────────────────────────────── */
+
+NTSTATUS
+SentinelFilterUnload(
+    _In_ FLT_FILTER_UNLOAD_FLAGS Flags
+)
+{
+    UNREFERENCED_PARAMETER(Flags);
+    PAGED_CODE();
+
+    /* Teardown communication port first */
+    SentinelCommsStop();
+
+    /* Unregister filter */
+    if (g_FilterHandle) {
+        FltUnregisterFilter(g_FilterHandle);
+        g_FilterHandle = NULL;
+    }
+
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS
+SentinelInstanceSetup(
+    _In_ PCFLT_RELATED_OBJECTS    FltObjects,
+    _In_ FLT_INSTANCE_SETUP_FLAGS Flags,
+    _In_ DEVICE_TYPE              VolumeDeviceType,
+    _In_ FLT_FILESYSTEM_TYPE      VolumeFilesystemType
+)
+{
+    UNREFERENCED_PARAMETER(FltObjects);
+    UNREFERENCED_PARAMETER(Flags);
+    UNREFERENCED_PARAMETER(VolumeDeviceType);
+    UNREFERENCED_PARAMETER(VolumeFilesystemType);
+    PAGED_CODE();
+
+    /* Accept all volumes — refined in Phase 5 */
+    return STATUS_SUCCESS;
+}
+
+/* ── DriverEntry ─────────────────────────────────────────────────────────── */
 
 NTSTATUS
 DriverEntry(
@@ -22,18 +132,141 @@ DriverEntry(
     _In_ PUNICODE_STRING RegistryPath
 )
 {
+    NTSTATUS        status;
+    UNICODE_STRING  deviceName;
+    UNICODE_STRING  symlinkName;
+
     UNREFERENCED_PARAMETER(RegistryPath);
 
-    DriverObject->DriverUnload = DriverUnload;
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+        "SentinelPOC: DriverEntry v%s\n", SENTINEL_VERSION));
+
+    DriverObject->DriverUnload = SentinelUnload;
+
+    /* ── Step 1: Create device object ──────────────────────────────────── */
+
+    RtlInitUnicodeString(&deviceName, SENTINEL_DEVICE_NAME);
+
+    status = IoCreateDevice(
+        DriverObject,
+        0,                          /* DeviceExtensionSize */
+        &deviceName,
+        FILE_DEVICE_UNKNOWN,
+        FILE_DEVICE_SECURE_OPEN,
+        FALSE,                      /* Exclusive */
+        &g_DeviceObject
+    );
+
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SentinelPOC: IoCreateDevice failed 0x%08X\n", status));
+        return status;
+    }
+
+    /* ── Step 2: Create symbolic link ──────────────────────────────────── */
+
+    RtlInitUnicodeString(&symlinkName, SENTINEL_SYMLINK_NAME);
+
+    status = IoCreateSymbolicLink(&symlinkName, &deviceName);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SentinelPOC: IoCreateSymbolicLink failed 0x%08X\n", status));
+        goto cleanup_device;
+    }
+
+    /* ── Step 3: Register minifilter ───────────────────────────────────── */
+
+    status = FltRegisterFilter(
+        DriverObject,
+        &g_FilterRegistration,
+        &g_FilterHandle
+    );
+
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SentinelPOC: FltRegisterFilter failed 0x%08X\n", status));
+        goto cleanup_symlink;
+    }
+
+    /* ── Step 4: Create communication port ─────────────────────────────── */
+
+    status = SentinelCommsInit(g_FilterHandle);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SentinelPOC: SentinelCommsInit failed 0x%08X\n", status));
+        goto cleanup_filter;
+    }
+
+    /* ── Step 5: Start filtering ───────────────────────────────────────── */
+
+    status = FltStartFiltering(g_FilterHandle);
+    if (!NT_SUCCESS(status)) {
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_ERROR_LEVEL,
+            "SentinelPOC: FltStartFiltering failed 0x%08X\n", status));
+        goto cleanup_comms;
+    }
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+        "SentinelPOC: Driver loaded successfully\n"));
 
     return STATUS_SUCCESS;
+
+    /* ── Cleanup on failure ────────────────────────────────────────────── */
+
+cleanup_comms:
+    SentinelCommsStop();
+
+cleanup_filter:
+    FltUnregisterFilter(g_FilterHandle);
+    g_FilterHandle = NULL;
+
+cleanup_symlink:
+    {
+        UNICODE_STRING symName;
+        RtlInitUnicodeString(&symName, SENTINEL_SYMLINK_NAME);
+        IoDeleteSymbolicLink(&symName);
+    }
+
+cleanup_device:
+    IoDeleteDevice(g_DeviceObject);
+    g_DeviceObject = NULL;
+
+    return status;
 }
 
+/* ── DriverUnload ────────────────────────────────────────────────────────── */
+
 VOID
-DriverUnload(
+SentinelUnload(
     _In_ PDRIVER_OBJECT DriverObject
 )
 {
+    UNICODE_STRING symlinkName;
+
     UNREFERENCED_PARAMETER(DriverObject);
     PAGED_CODE();
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+        "SentinelPOC: DriverUnload\n"));
+
+    /* Communication port — closed in SentinelFilterUnload via FltUnregisterFilter */
+
+    /* Unregister minifilter (triggers SentinelFilterUnload) */
+    if (g_FilterHandle) {
+        FltUnregisterFilter(g_FilterHandle);
+        g_FilterHandle = NULL;
+    }
+
+    /* Delete symbolic link */
+    RtlInitUnicodeString(&symlinkName, SENTINEL_SYMLINK_NAME);
+    IoDeleteSymbolicLink(&symlinkName);
+
+    /* Delete device object */
+    if (g_DeviceObject) {
+        IoDeleteDevice(g_DeviceObject);
+        g_DeviceObject = NULL;
+    }
+
+    KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+        "SentinelPOC: Driver unloaded\n"));
 }

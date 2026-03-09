@@ -16,7 +16,6 @@
 #define SENTINEL_CONSTANTS_H
 
 #ifdef _KERNEL_MODE
-    #include <ntddk.h>
     #include <fltKernel.h>
 #else
     #include <windows.h>
