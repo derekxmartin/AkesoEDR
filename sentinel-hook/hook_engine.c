@@ -621,9 +621,12 @@ InstallHook(
     entry->Active = TRUE;
     *OriginalFunc = trampoline;
 
-    OutputDebugStringA("SentinelHook: Hook installed: ");
-    OutputDebugStringA(FunctionName);
-    OutputDebugStringA("\n");
+    {
+        char msg[256];
+        wsprintfA(msg, "SentinelHook: Hook installed: %s!%s\n",
+                  ModuleName, FunctionName);
+        OutputDebugStringA(msg);
+    }
 
     return TRUE;
 }
