@@ -150,70 +150,22 @@ SentinelThreadNotifyCallback(
     _In_ BOOLEAN Create
 )
 {
-    SENTINEL_EVENT  event;
-    HANDLE          creatingPid;
-    HANDLE          creatingTid;
-    BOOLEAN         isRemote;
-
-    /* Get the creating process/thread (the caller, not the target) */
-    creatingPid = PsGetCurrentProcessId();
-    creatingTid = PsGetCurrentThreadId();
-
-    /* Detect remote thread creation */
-    isRemote = (Create && (creatingPid != ProcessId));
-
-    /* Initialize event envelope */
-    SENTINEL_EVENT_INIT(event, SentinelSourceDriverThread,
-        isRemote ? SentinelSeverityHigh : SentinelSeverityInformational);
-
-    /* Fill process context (owning process of the thread) */
-    SentinelFillProcessCtxForThread(&event.ProcessCtx, ProcessId);
-
-    /* Fill thread-specific payload */
-    event.Payload.Thread.IsCreate          = Create;
-    event.Payload.Thread.ThreadId          = (ULONG)(ULONG_PTR)ThreadId;
-    event.Payload.Thread.OwningProcessId   = (ULONG)(ULONG_PTR)ProcessId;
-    event.Payload.Thread.CreatingProcessId = (ULONG)(ULONG_PTR)creatingPid;
-    event.Payload.Thread.CreatingThreadId  = (ULONG)(ULONG_PTR)creatingTid;
-    event.Payload.Thread.IsRemote          = isRemote;
-
     /*
-     * Start address: only available on thread creation.
-     * We retrieve it from the ETHREAD via PsGetThreadStartAddress
-     * (undocumented but widely used by security products).
+     * STUB: Minimal callback to isolate BSOD cause.
+     * If this stub doesn't crash, the bug is in the callback body above.
+     * Re-enable the full implementation once stability is confirmed.
      */
     if (Create) {
-        PETHREAD threadObj = NULL;
-        NTSTATUS status;
-
-        status = PsLookupThreadByThreadId(ThreadId, &threadObj);
-        if (NT_SUCCESS(status) && threadObj) {
-            /* PsGetThreadStartAddress is not in headers but exported */
-            event.Payload.Thread.StartAddress = 0;  /* Set below if available */
-            ObDereferenceObject(threadObj);
-        } else {
-            event.Payload.Thread.StartAddress = 0;
-        }
-    } else {
-        event.Payload.Thread.StartAddress = 0;
-    }
-
-    if (Create) {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_TRACE_LEVEL,
-            "SentinelPOC: Thread CREATE TID=%lu PID=%lu Creator=%lu%s\n",
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+            "SentinelPOC: [STUB] Thread CREATE TID=%lu PID=%lu\n",
             (ULONG)(ULONG_PTR)ThreadId,
-            (ULONG)(ULONG_PTR)ProcessId,
-            (ULONG)(ULONG_PTR)creatingPid,
-            isRemote ? " [REMOTE]" : ""));
+            (ULONG)(ULONG_PTR)ProcessId));
     } else {
-        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_TRACE_LEVEL,
-            "SentinelPOC: Thread EXIT TID=%lu PID=%lu\n",
+        KdPrintEx((DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+            "SentinelPOC: [STUB] Thread EXIT TID=%lu PID=%lu\n",
             (ULONG)(ULONG_PTR)ThreadId,
             (ULONG)(ULONG_PTR)ProcessId));
     }
-
-    /* Send event to agent (silently drops if no agent connected) */
-    SentinelCommsSend(&event);
 }
 
 /* -- Helper: fill process context for the thread's owning process ----------- */
@@ -262,7 +214,9 @@ SentinelFillProcessCtxForThread(
                 imageName->Length / sizeof(WCHAR)
             );
         }
-        ExFreePool(imageName);
+        if (imageName) {
+            ExFreePool(imageName);
+        }
     }
 
     ObDereferenceObject(process);
