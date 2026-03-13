@@ -13,6 +13,7 @@
  *   connections    — show network connection table
  *   processes      — list tracked processes with metadata
  *   hooks          — show hook DLL status per process
+ *   config         — show active agent configuration
  *
  * Flags:
  *   --json         — output raw JSON instead of formatted text
@@ -20,6 +21,7 @@
  *
  * P9-T1: Core CLI Commands.
  * P9-T2: Inspection Commands.
+ * P9-T3: Configuration command.
  * Book reference: Chapter 1 — Agent Design, SOC Workflow.
  */
 
@@ -51,6 +53,7 @@ PrintUsage()
         "  connections      Show network connection table\n"
         "  processes        List tracked processes with integrity level\n"
         "  hooks            Show hook DLL status per process\n"
+        "  config           Show active agent configuration\n"
         "\n"
         "Flags:\n"
         "  --json           Output raw JSON\n"
@@ -466,6 +469,51 @@ PrintHooks(const std::string& json)
     }
 }
 
+/* ── P9-T3: Config printer ───────────────────────────────────────────────── */
+
+static void
+PrintConfig(const std::string& json)
+{
+    /* Extract nested values — "paths":{...}, "scanner":{...}, etc. */
+    /* We reuse JsonGetString/JsonGetValue which work on the flat json string
+       because our keys are unique across all sub-objects. */
+    std::printf("SentinelPOC Agent Configuration\n");
+    std::printf("================================\n");
+
+    std::string configFile = JsonGetString(json, "config_file");
+    if (configFile.empty()) {
+        std::printf("  Config file:   (defaults — no file loaded)\n");
+    } else {
+        std::printf("  Config file:   %s\n", configFile.c_str());
+    }
+
+    std::printf("\n  [paths]\n");
+    std::printf("  Log path:      %s\n",
+                JsonGetString(json, "log_path").c_str());
+    std::printf("  AMSI DLL:      %s\n",
+                JsonGetString(json, "amsi_dll").c_str());
+    std::printf("  Rules dir:     %s\n",
+                JsonGetString(json, "rules_dir").c_str());
+    std::printf("  YARA rules:    %s\n",
+                JsonGetString(json, "yara_rules_dir").c_str());
+
+    std::printf("\n  [scanner]\n");
+    std::printf("  Max file size: %s MB\n",
+                JsonGetValue(json, "max_file_size_mb").c_str());
+    std::printf("  Max region:    %s MB\n",
+                JsonGetValue(json, "max_region_size_mb").c_str());
+    std::printf("  Cache TTL:     %s seconds\n",
+                JsonGetValue(json, "cache_ttl_sec").c_str());
+
+    std::printf("\n  [logging]\n");
+    std::printf("  Max log size:  %s MB\n",
+                JsonGetValue(json, "max_log_size_mb").c_str());
+
+    std::printf("\n  [network]\n");
+    std::printf("  Max events/s:  %s\n",
+                JsonGetValue(json, "max_events_per_sec").c_str());
+}
+
 /* ── Main ────────────────────────────────────────────────────────────────── */
 
 int main(int argc, char* argv[])
@@ -534,6 +582,9 @@ int main(int argc, char* argv[])
     } else if (strcmp(command, "hooks") == 0) {
         cmdType = SentinelCmdHooks;
 
+    } else if (strcmp(command, "config") == 0) {
+        cmdType = SentinelCmdConfig;
+
     } else {
         std::fprintf(stderr, "Error: Unknown command '%s'\n\n", command);
         PrintUsage();
@@ -566,6 +617,7 @@ int main(int argc, char* argv[])
         case SentinelCmdConnections: PrintConnections(json);  break;
         case SentinelCmdProcesses:   PrintProcesses(json);    break;
         case SentinelCmdHooks:       PrintHooks(json);        break;
+        case SentinelCmdConfig:      PrintConfig(json);       break;
         default: std::printf("%s\n", json.c_str()); break;
         }
     }

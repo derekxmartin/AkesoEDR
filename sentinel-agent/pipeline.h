@@ -29,6 +29,8 @@
 #include <atomic>
 #include "telemetry.h"
 
+struct SentinelConfig;  /* Forward declaration (defined in config.h) */
+
 /* ── Thread-safe event queue ──────────────────────────────────────────────── */
 
 class EventQueue {
@@ -72,7 +74,7 @@ extern std::atomic<bool> g_Shutdown;
  *   - Named pipe server (listener + per-client handlers)
  *   - Event processing thread
  */
-void PipelineStart();
+void PipelineStart(const SentinelConfig& cfg);
 
 /*
  * Stop all pipeline threads with graceful shutdown (5 second timeout).

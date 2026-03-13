@@ -16,27 +16,29 @@
 /* ── Init / Shutdown ─────────────────────────────────────────────────────── */
 
 bool
-EventProcessor::Init(const char* logPath)
+EventProcessor::Init(const SentinelConfig& cfg)
 {
+    m_config = cfg;
     m_eventsProcessed = 0;
 
-    /* Load detection rules */
-    m_ruleEngine.Init("C:\\SentinelPOC\\rules");
-    m_sequenceEngine.Init("C:\\SentinelPOC\\rules");
-    m_thresholdEngine.Init("C:\\SentinelPOC\\rules");
+    /* Load detection rules from configured directory */
+    m_ruleEngine.Init(m_config.rulesDir);
+    m_sequenceEngine.Init(m_config.rulesDir);
+    m_thresholdEngine.Init(m_config.rulesDir);
 
-    /* Initialize YARA scanner (P8-T1) */
-    if (!m_yaraScanner.Init("C:\\SentinelPOC\\yara-rules")) {
+    /* Initialize YARA scanner with configured directory and max file size */
+    if (!m_yaraScanner.Init(m_config.yaraRulesDir, m_config.scanMaxFileSize)) {
         std::printf("SentinelAgent: WARNING: YARA scanner init failed\n");
     }
 
-    /* Initialize on-access scanner (P8-T2) */
-    m_onAccessScanner.Init(&m_yaraScanner);
+    /* Initialize on-access scanner with configured cache TTL */
+    m_onAccessScanner.Init(&m_yaraScanner, m_config.scanCacheTtlSec);
 
-    /* Initialize memory scanner (P8-T3) */
-    m_memoryScanner.Init(&m_yaraScanner);
+    /* Initialize memory scanner with configured max region size */
+    m_memoryScanner.Init(&m_yaraScanner, m_config.scanMaxRegionSize);
 
-    return m_jsonWriter.Open(logPath);
+    /* Open JSON log with configured max size for rotation */
+    return m_jsonWriter.Open(m_config.logPath, m_config.logMaxSizeBytes);
 }
 
 void
@@ -323,9 +325,9 @@ EventProcessor::ReloadRules()
 {
     bool ok = true;
 
-    m_ruleEngine.Init("C:\\SentinelPOC\\rules");
-    m_sequenceEngine.Init("C:\\SentinelPOC\\rules");
-    m_thresholdEngine.Init("C:\\SentinelPOC\\rules");
+    m_ruleEngine.Init(m_config.rulesDir);
+    m_sequenceEngine.Init(m_config.rulesDir);
+    m_thresholdEngine.Init(m_config.rulesDir);
 
     std::printf("SentinelAgent: Rules reloaded — single=%zu seq=%zu thr=%zu\n",
                 m_ruleEngine.RuleCount(),

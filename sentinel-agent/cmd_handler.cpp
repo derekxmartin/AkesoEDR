@@ -11,6 +11,7 @@
  */
 
 #include "cmd_handler.h"
+#include "config.h"
 #include "event_processor.h"
 #include "pipeline.h"        /* g_EventQueue for queue depth */
 #include "json_writer.h"     /* SeverityName(), SourceName() */
@@ -28,9 +29,11 @@
 
 void
 CommandHandler::Start(EventProcessor* processor,
-                      std::function<bool()> driverStatusFn)
+                      std::function<bool()> driverStatusFn,
+                      const SentinelConfig* config)
 {
     m_processor      = processor;
+    m_config         = config;
     m_driverStatusFn = std::move(driverStatusFn);
     m_startTime      = GetTickCount64();
     m_running.store(true);
@@ -206,6 +209,9 @@ CommandHandler::HandleClient(HANDLE hPipe)
         break;
     case SentinelCmdHooks:
         json = HandleHooks();
+        break;
+    case SentinelCmdConfig:
+        json = HandleConfig();
         break;
     default:
         json = "{\"error\":\"Unknown command\"}";
@@ -624,4 +630,15 @@ CommandHandler::SendReply(HANDLE hPipe, UINT32 cmdType, UINT32 status,
 
     DWORD written = 0;
     return WriteFile(hPipe, buf.data(), totalFrame, &written, nullptr) != 0;
+}
+
+/* ── HandleConfig (P9-T3) ───────────────────────────────────────────────── */
+
+std::string
+CommandHandler::HandleConfig()
+{
+    if (m_config) {
+        return ConfigToJson(*m_config);
+    }
+    return "{\"error\":\"Configuration not available\"}";
 }

@@ -9,13 +9,21 @@
  *      Ctrl+C triggers graceful shutdown.
  *
  * P4-T1: Service skeleton + event pipeline.
+ * P9-T3: Configuration file support (--config).
  */
 
 #include <windows.h>
 #include <cstdio>
 #include <cstring>
 #include "service.h"
+#include "config.h"
 #include "constants.h"
+
+/* File-scope config — loaded once in main(), read by ServiceMain / RunConsoleMode */
+static SentinelConfig g_AgentConfig;
+
+/* Accessor for service.cpp */
+const SentinelConfig& GetAgentConfig() { return g_AgentConfig; }
 
 int
 main(int argc, char* argv[])
@@ -23,13 +31,31 @@ main(int argc, char* argv[])
     /* Disable stdout buffering so ETW events appear immediately in console */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Check for --console flag */
+    /* Parse command-line arguments */
+    bool consoleMode = false;
+    const char* configPath = "C:\\SentinelPOC\\sentinel.conf";
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--console") == 0) {
-            std::printf("SentinelPOC Agent v%s\n", SENTINEL_VERSION);
-            RunConsoleMode();
-            return 0;
+            consoleMode = true;
+        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+            configPath = argv[++i];
         }
+    }
+
+    /* Load configuration */
+    ConfigSetDefaults(g_AgentConfig);
+    if (ConfigLoad(g_AgentConfig, configPath)) {
+        std::printf("SentinelAgent: Config loaded from %s\n", configPath);
+    } else {
+        std::printf("SentinelAgent: Config file not found (%s), using defaults\n",
+                    configPath);
+    }
+
+    if (consoleMode) {
+        std::printf("SentinelPOC Agent v%s\n", SENTINEL_VERSION);
+        RunConsoleMode(g_AgentConfig);
+        return 0;
     }
 
     /* Service mode — register with the SCM */
@@ -46,6 +72,8 @@ main(int argc, char* argv[])
             std::printf("Usage:\n");
             std::printf("  sentinel-agent.exe --console    "
                         "Run interactively (for debugging)\n");
+            std::printf("  sentinel-agent.exe --config <path>  "
+                        "Specify config file\n");
             std::printf("  sc create SentinelAgent binPath= "
                         "\"<path>\\sentinel-agent.exe\"\n");
             std::printf("  sc start SentinelAgent           "

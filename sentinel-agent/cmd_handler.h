@@ -7,6 +7,7 @@
  *
  * P9-T1: Core CLI Commands.
  * P9-T2: Inspection Commands (connections, processes, hooks).
+ * P9-T3: Configuration query command.
  * Book reference: Chapter 1 — Agent Design.
  */
 
@@ -21,6 +22,7 @@
 
 /* Forward declarations */
 class EventProcessor;
+struct SentinelConfig;
 
 class CommandHandler {
 public:
@@ -28,15 +30,18 @@ public:
      * Start the command pipe server thread.
      * processor: pointer to the EventProcessor for querying state.
      * driverStatusFn: callback that returns true if the driver port is connected.
+     * config: pointer to active configuration (for config query command).
      */
     void Start(EventProcessor* processor,
-               std::function<bool()> driverStatusFn);
+               std::function<bool()> driverStatusFn,
+               const SentinelConfig* config = nullptr);
 
     /* Stop the command pipe server and join the thread. */
     void Stop();
 
 private:
     EventProcessor*         m_processor = nullptr;
+    const SentinelConfig*   m_config    = nullptr;
     std::function<bool()>   m_driverStatusFn;
     std::thread             m_thread;
     std::atomic<bool>       m_running{false};
@@ -59,6 +64,9 @@ private:
     std::string HandleConnections();
     std::string HandleProcesses();
     std::string HandleHooks();
+
+    /* P9-T3: Configuration query */
+    std::string HandleConfig();
 
     /* Send a SENTINEL_IPC_COMMAND_REPLY with JSON payload. */
     bool SendReply(HANDLE hPipe, UINT32 cmdType, UINT32 status,
