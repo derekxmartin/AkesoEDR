@@ -196,6 +196,7 @@ JsonWriter::DwordToHex(ULONG val)
 JsonWriter::JsonWriter()
     : m_hFile(INVALID_HANDLE_VALUE)
     , m_bytesWritten(0)
+    , m_maxSizeBytes(100 * 1024 * 1024)
     , m_rotationIndex(0)
 {}
 
@@ -205,11 +206,12 @@ JsonWriter::~JsonWriter()
 }
 
 bool
-JsonWriter::Open(const char* basePath)
+JsonWriter::Open(const char* basePath, UINT32 maxSizeBytes)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_basePath = basePath;
     m_bytesWritten = 0;
+    m_maxSizeBytes = maxSizeBytes;
     m_rotationIndex = 0;
 
     m_hFile = CreateFileA(
@@ -270,7 +272,7 @@ JsonWriter::ReopenFile()
 void
 JsonWriter::RotateIfNeeded()
 {
-    if (m_bytesWritten < SENTINEL_LOG_MAX_SIZE_BYTES) {
+    if (m_bytesWritten < m_maxSizeBytes) {
         return;
     }
 

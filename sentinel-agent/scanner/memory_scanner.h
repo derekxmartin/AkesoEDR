@@ -30,9 +30,10 @@ class MemoryScanner {
 public:
     /*
      * Bind to a YaraScanner instance (owned by EventProcessor).
+     * maxRegionSize: skip memory regions larger than this (bytes).
      * Must be called after YaraScanner::Init().
      */
-    void Init(YaraScanner* scanner);
+    void Init(YaraScanner* scanner, UINT32 maxRegionSize);
 
     /* Release resources. */
     void Shutdown();
@@ -54,7 +55,8 @@ public:
     bool IsReady() const;
 
 private:
-    YaraScanner* m_scanner = nullptr;
+    YaraScanner* m_scanner        = nullptr;
+    UINT32       m_maxRegionSize = 10 * 1024 * 1024;
 };
 
 #endif /* SENTINEL_MEMORY_SCANNER_H */

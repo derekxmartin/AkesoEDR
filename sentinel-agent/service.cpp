@@ -10,6 +10,7 @@
 #include <windows.h>
 #include <cstdio>
 #include "service.h"
+#include "config.h"
 #include "pipeline.h"
 #include "constants.h"
 
@@ -103,8 +104,8 @@ ServiceMain(DWORD argc, LPWSTR* argv)
         return;
     }
 
-    /* Start the event pipeline */
-    PipelineStart();
+    /* Start the event pipeline (config was loaded in main()) */
+    PipelineStart(GetAgentConfig());
 
     /* Report running */
     ReportServiceStatus(SERVICE_RUNNING, NO_ERROR, 0);
@@ -139,7 +140,7 @@ ConsoleCtrlHandler(DWORD ctrlType)
 }
 
 void
-RunConsoleMode()
+RunConsoleMode(const SentinelConfig& cfg)
 {
     std::printf("SentinelAgent: Running in console mode (Ctrl+C to stop)\n");
 
@@ -147,7 +148,7 @@ RunConsoleMode()
     SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
     /* Start the pipeline */
-    PipelineStart();
+    PipelineStart(cfg);
 
     std::printf("SentinelAgent: Pipeline started, waiting for events...\n");
 

@@ -54,9 +54,10 @@ NtPathToWin32(const WCHAR* ntPath, WCHAR* win32Path, size_t maxChars)
 /* ── Init / Shutdown ─────────────────────────────────────────────────────── */
 
 void
-OnAccessScanner::Init(YaraScanner* scanner)
+OnAccessScanner::Init(YaraScanner* scanner, UINT32 cacheTtlSec)
 {
     m_scanner = scanner;
+    m_cacheTtlSec = cacheTtlSec;
     m_cache.clear();
 }
 
@@ -78,7 +79,7 @@ OnAccessScanner::IsCacheValid(const std::string& hash) const
     }
 
     auto age = std::chrono::steady_clock::now() - it->second.timestamp;
-    auto ttl = std::chrono::seconds(SENTINEL_SCAN_CACHE_TTL_SEC);
+    auto ttl = std::chrono::seconds(m_cacheTtlSec);
 
     return age < ttl;
 }

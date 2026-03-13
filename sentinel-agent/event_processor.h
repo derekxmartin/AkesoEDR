@@ -12,6 +12,7 @@
  * P4-T5: Threshold Rule Engine.
  * P6-T3: Connection Table.
  * P9-T1: CLI command support (alert history, rule reload, on-demand scan).
+ * P9-T3: Configuration file support.
  */
 
 #ifndef SENTINEL_EVENT_PROCESSOR_H
@@ -22,6 +23,7 @@
 #include <mutex>
 #include <string>
 #include "telemetry.h"
+#include "config.h"
 #include "process_table.h"
 #include "network_table.h"
 #include "json_writer.h"
@@ -44,11 +46,11 @@ struct RuleCountSummary {
 class EventProcessor {
 public:
     /*
-     * Initialize the event processor.
-     * Opens the JSON log file at the given path.
+     * Initialize the event processor with the loaded configuration.
+     * Opens the JSON log file, loads detection rules, initializes scanners.
      * Returns false if the log file cannot be opened.
      */
-    bool Init(const char* logPath);
+    bool Init(const SentinelConfig& cfg);
 
     /*
      * Process a single event:
@@ -76,6 +78,9 @@ public:
 
     /* Access the process table (for CLI inspection commands). */
     ProcessTable& GetProcessTable() { return m_processTable; }
+
+    /* Access the active configuration (for CLI config command). */
+    const SentinelConfig& GetConfig() const { return m_config; }
 
     /* ── P9-T1: CLI command support ─────────────────────────────────────── */
 
@@ -105,6 +110,7 @@ public:
     std::deque<SENTINEL_EVENT> GetAlertHistory();
 
 private:
+    SentinelConfig    m_config;
     ProcessTable      m_processTable;
     NetworkTable      m_networkTable;
     RuleEngine        m_ruleEngine;

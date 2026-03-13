@@ -36,10 +36,11 @@ public:
     /*
      * Initialize the YARA engine and compile rules from the given directory.
      * rulesDir: path containing *.yar files (e.g., "C:\\SentinelPOC\\yara-rules").
+     * maxFileSize: skip files larger than this (bytes).
      * Returns true on success (even if zero rules loaded — not a fatal error).
      * Returns false if yr_initialize() fails.
      */
-    bool Init(const char* rulesDir);
+    bool Init(const char* rulesDir, UINT32 maxFileSize);
 
     /*
      * Shut down the YARA engine: destroy compiled rules, call yr_finalize().
@@ -51,7 +52,7 @@ public:
      * Scan a file on disk against loaded YARA rules.
      * Populates result.YaraRule with the first matching rule name.
      * Sets result.IsMatch = TRUE on match, FALSE otherwise.
-     * Skips files larger than SENTINEL_SCAN_MAX_FILE_SIZE (50 MB).
+     * Skips files larger than the configured max file size.
      * Returns true if scan completed (regardless of match), false on error.
      */
     bool ScanFile(const wchar_t* filePath,
@@ -84,6 +85,7 @@ private:
     YR_RULES*                   m_rules;
     mutable std::shared_mutex   m_rulesMutex;
     std::string                 m_rulesDir;
+    UINT32                      m_maxFileSize;
     bool                        m_initialized;
     int                         m_ruleCount;
 

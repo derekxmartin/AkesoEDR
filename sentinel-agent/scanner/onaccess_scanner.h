@@ -30,9 +30,10 @@ class OnAccessScanner {
 public:
     /*
      * Bind to a YaraScanner instance (owned by EventProcessor).
+     * cacheTtlSec: how long cached scan results remain valid (seconds).
      * Must be called after YaraScanner::Init().
      */
-    void Init(YaraScanner* scanner);
+    void Init(YaraScanner* scanner, UINT32 cacheTtlSec);
 
     /* Release resources (clears cache). */
     void Shutdown();
@@ -49,7 +50,8 @@ public:
                      SENTINEL_EVENT& alertOut);
 
 private:
-    YaraScanner* m_scanner = nullptr;
+    YaraScanner* m_scanner      = nullptr;
+    UINT32       m_cacheTtlSec = 300;
 
     /* ── Scan result cache ──────────────────────────────────────────── */
 

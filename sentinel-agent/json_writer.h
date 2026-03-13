@@ -4,7 +4,7 @@
  *
  * Serializes SENTINEL_EVENT structs into JSON-lines format (one JSON object
  * per line). Automatically rotates the log file when it exceeds
- * SENTINEL_LOG_MAX_SIZE_BYTES (100MB).
+ * the configured max size (default 100 MB).
  *
  * P4-T2: Event Processing & JSON Logging.
  */
@@ -22,8 +22,11 @@ public:
     JsonWriter();
     ~JsonWriter();
 
-    /* Open or create the log file at the given path. */
-    bool Open(const char* basePath);
+    /*
+     * Open or create the log file at the given path.
+     * maxSizeBytes: rotate when file exceeds this size.
+     */
+    bool Open(const char* basePath, UINT32 maxSizeBytes);
 
     /*
      * Serialize an event to JSON and write as a single line.
@@ -42,6 +45,7 @@ private:
     HANDLE      m_hFile;
     std::string m_basePath;
     ULONGLONG   m_bytesWritten;
+    UINT32      m_maxSizeBytes;
     int         m_rotationIndex;
     std::mutex  m_mutex;
 

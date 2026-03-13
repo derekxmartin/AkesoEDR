@@ -62,6 +62,7 @@ static void CompilerErrorCallback(
 
 YaraScanner::YaraScanner()
     : m_rules(nullptr)
+    , m_maxFileSize(50 * 1024 * 1024)
     , m_initialized(false)
     , m_ruleCount(0)
 {
@@ -75,7 +76,7 @@ YaraScanner::~YaraScanner()
 /* ── Init / Shutdown ────────────────────────────────────────────────────── */
 
 bool
-YaraScanner::Init(const char* rulesDir)
+YaraScanner::Init(const char* rulesDir, UINT32 maxFileSize)
 {
     if (m_initialized) return true;
 
@@ -87,6 +88,7 @@ YaraScanner::Init(const char* rulesDir)
 
     m_initialized = true;
     m_rulesDir = rulesDir;
+    m_maxFileSize = maxFileSize;
 
     /* Compile rules from directory */
     m_rules = CompileRulesFromDir(m_ruleCount);
@@ -162,7 +164,7 @@ YaraScanner::ScanFile(const wchar_t* filePath,
     LARGE_INTEGER fileSize;
     if (GetFileSizeEx(hFile, &fileSize)) {
         CloseHandle(hFile);
-        if (fileSize.QuadPart > SENTINEL_SCAN_MAX_FILE_SIZE) {
+        if (fileSize.QuadPart > m_maxFileSize) {
             return true;    /* Skip oversized file, not an error */
         }
     } else {

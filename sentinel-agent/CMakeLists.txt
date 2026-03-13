@@ -4,6 +4,7 @@ cmake_minimum_required(VERSION 3.20)
 add_executable(sentinel-agent
     main.cpp
     service.cpp
+    config.cpp
     pipeline.cpp
     event_processor.cpp
     process_table.cpp

@@ -26,9 +26,10 @@
 /* ── Init / Shutdown ─────────────────────────────────────────────────────── */
 
 void
-MemoryScanner::Init(YaraScanner* scanner)
+MemoryScanner::Init(YaraScanner* scanner, UINT32 maxRegionSize)
 {
     m_scanner = scanner;
+    m_maxRegionSize = maxRegionSize;
 }
 
 void
@@ -95,7 +96,7 @@ MemoryScanner::ScanProcess(ULONG targetPid, SENTINEL_EVENT& alertOut)
             mbi.Type   == MEM_PRIVATE &&
             IsExecutableProtection(mbi.Protect) &&
             mbi.RegionSize > 0 &&
-            mbi.RegionSize <= SENTINEL_SCAN_MAX_REGION_SIZE)
+            mbi.RegionSize <= m_maxRegionSize)
         {
             /* Read region contents */
             std::vector<uint8_t> buffer(mbi.RegionSize);

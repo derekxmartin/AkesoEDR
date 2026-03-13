@@ -24,6 +24,7 @@
 #include <chrono>
 
 #include "pipeline.h"
+#include "config.h"
 #include "event_processor.h"
 #include "cmd_handler.h"
 #include "etw/etw_consumer.h"
@@ -419,13 +420,13 @@ ProcessorThread()
 /* ── Pipeline lifecycle ───────────────────────────────────────────────────── */
 
 void
-PipelineStart()
+PipelineStart(const SentinelConfig& cfg)
 {
     g_Shutdown.store(false);
     g_ShutdownEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
 
-    /* Initialize event processor (JSON log + process table) */
-    if (!g_EventProcessor.Init("C:\\SentinelPOC\\agent_events.jsonl")) {
+    /* Initialize event processor with config (paths, thresholds) */
+    if (!g_EventProcessor.Init(cfg)) {
         AgentLog("SentinelAgent: WARNING: Failed to open JSON log file\n");
     }
 
@@ -440,7 +441,7 @@ PipelineStart()
     }
 
     /* Register custom AMSI provider (after ETW so we can observe results) */
-    if (!AmsiProviderRegister(L"C:\\SentinelPOC\\sentinel-amsi.dll")) {
+    if (!AmsiProviderRegister(cfg.amsiDllPath)) {
         AgentLog("SentinelAgent: WARNING: AMSI provider registration failed "
                  "(AMSI scanning will not be active)\n");
     }
@@ -450,11 +451,13 @@ PipelineStart()
     g_PipeListenerThread = std::thread(PipeListenerThread);
     g_ProcessorThread    = std::thread(ProcessorThread);
 
-    /* Start command handler (P9-T1: CLI commands) */
-    g_CommandHandler.Start(&g_EventProcessor, []() -> bool {
-        std::lock_guard<std::mutex> lock(g_DriverPortMutex);
-        return g_DriverPort != INVALID_HANDLE_VALUE;
-    });
+    /* Start command handler (P9-T1: CLI commands, P9-T3: config query) */
+    g_CommandHandler.Start(&g_EventProcessor,
+                           []() -> bool {
+                               std::lock_guard<std::mutex> lock(g_DriverPortMutex);
+                               return g_DriverPort != INVALID_HANDLE_VALUE;
+                           },
+                           &cfg);
 }
 
 void
