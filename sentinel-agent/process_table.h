@@ -14,6 +14,7 @@
 
 #include <windows.h>
 #include <string>
+#include <vector>
 #include <unordered_map>
 #include <mutex>
 #include "telemetry.h"
@@ -46,6 +47,12 @@ public:
 
     /* Look up a process entry by PID. Returns true if found. */
     bool Lookup(ULONG pid, ProcessEntry& out);
+
+    /*
+     * Get a thread-safe snapshot of all process entries.
+     * Entries are sorted by PID ascending.
+     */
+    void GetSnapshot(std::vector<ProcessEntry>& out);
 
     /*
      * Look up the parent process and return its image path.

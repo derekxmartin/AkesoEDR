@@ -7,6 +7,7 @@
 
 #include "process_table.h"
 #include <cstring>
+#include <algorithm>
 
 /* ── Helper: upsert a process entry from ProcessCtx ──────────────────────── */
 
@@ -129,4 +130,23 @@ ProcessTable::GetParentImagePath(const SENTINEL_EVENT& evt)
     }
 
     return it->second.ImagePath;
+}
+
+/* ── GetSnapshot ────────────────────────────────────────────────────────── */
+
+void
+ProcessTable::GetSnapshot(std::vector<ProcessEntry>& out)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    out.clear();
+    out.reserve(m_entries.size());
+
+    for (const auto& kv : m_entries) {
+        out.push_back(kv.second);
+    }
+
+    std::sort(out.begin(), out.end(),
+              [](const ProcessEntry& a, const ProcessEntry& b) {
+                  return a.Pid < b.Pid;
+              });
 }
