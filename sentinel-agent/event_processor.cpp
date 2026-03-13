@@ -129,21 +129,12 @@ EventProcessor::PrintSummary(const SENTINEL_EVENT& evt)
                         hook.ReturnStatus);
         }
     } else if (evt.Source == SentinelSourceDriverMinifilter) {
-        const auto& file = evt.Payload.File;
-        static const char* fileOpNames[] = {
-            "CREATE", "WRITE", "RENAME", "DELETE", "SETINFO"
-        };
-        const char* opName = (file.Operation >= 0 && file.Operation <= 4)
-            ? fileOpNames[file.Operation] : "UNKNOWN";
-        std::printf("[%llu] source=%s %s pid=%lu path=%S size=%lld hash=%s%s\n",
-                    m_eventsProcessed,
-                    SourceName(evt.Source),
-                    opName,
-                    file.RequestingProcessId,
-                    file.FilePath,
-                    file.FileSize.QuadPart,
-                    file.Sha256Hex[0] ? file.Sha256Hex : "(none)",
-                    file.HashSkipped ? " [skipped]" : "");
+        /*
+         * Suppress per-event minifilter output — too noisy with every
+         * system-wide file I/O generating an event.  On-access scanner
+         * alerts (SentinelSourceScanner) are still printed below.
+         * Events are still logged to the JSON file.
+         */
     } else if (evt.Source == SentinelSourceDriverPipe) {
         const auto& pipe = evt.Payload.Pipe;
         std::printf("[%llu] source=%s PIPE_CREATE pid=%lu pipe=%S%s\n",
