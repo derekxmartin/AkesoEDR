@@ -29,12 +29,16 @@ EventProcessor::Init(const char* logPath)
         std::printf("SentinelAgent: WARNING: YARA scanner init failed\n");
     }
 
+    /* Initialize on-access scanner (P8-T2) */
+    m_onAccessScanner.Init(&m_yaraScanner);
+
     return m_jsonWriter.Open(logPath);
 }
 
 void
 EventProcessor::Shutdown()
 {
+    m_onAccessScanner.Shutdown();
     m_yaraScanner.Shutdown();
     m_jsonWriter.Close();
 }
@@ -51,6 +55,17 @@ EventProcessor::Process(const SENTINEL_EVENT& evt)
 
     /* 1b. Update connection table from network events */
     m_networkTable.OnNetworkEvent(evt);
+
+    /* 1c. On-access YARA scan for minifilter file events (P8-T2) */
+    if (evt.Source == SentinelSourceDriverMinifilter) {
+        SENTINEL_EVENT scanAlert = {};
+        if (m_onAccessScanner.OnFileEvent(evt.Payload.File, scanAlert)) {
+            m_eventsProcessed++;
+            std::wstring scanParent = m_processTable.GetParentImagePath(scanAlert);
+            m_jsonWriter.WriteEvent(scanAlert, scanParent);
+            PrintSummary(scanAlert);
+        }
+    }
 
     /* 2. Evaluate single-event detection rules */
     std::vector<SENTINEL_EVENT> alerts;
