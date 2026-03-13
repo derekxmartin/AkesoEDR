@@ -74,6 +74,9 @@ public:
     /* Access the connection table (for periodic summary, CLI queries). */
     NetworkTable& GetNetworkTable() { return m_networkTable; }
 
+    /* Access the process table (for CLI inspection commands). */
+    ProcessTable& GetProcessTable() { return m_processTable; }
+
     /* ── P9-T1: CLI command support ─────────────────────────────────────── */
 
     /*

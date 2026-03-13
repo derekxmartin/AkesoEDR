@@ -6,6 +6,7 @@
  * Dispatches commands to EventProcessor and returns JSON replies.
  *
  * P9-T1: Core CLI Commands.
+ * P9-T2: Inspection Commands (connections, processes, hooks).
  * Book reference: Chapter 1 — Agent Design.
  */
 
@@ -53,6 +54,11 @@ private:
     std::string HandleAlerts(const wchar_t* arg);
     std::string HandleScan(const wchar_t* arg);
     std::string HandleRulesReload();
+
+    /* P9-T2: Inspection commands */
+    std::string HandleConnections();
+    std::string HandleProcesses();
+    std::string HandleHooks();
 
     /* Send a SENTINEL_IPC_COMMAND_REPLY with JSON payload. */
     bool SendReply(HANDLE hPipe, UINT32 cmdType, UINT32 status,

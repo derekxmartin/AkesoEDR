@@ -10,12 +10,16 @@
  *   alerts [N]     — show last N alerts (default 20)
  *   scan <path>    — trigger on-demand YARA scan
  *   rules reload   — hot-reload detection rules
+ *   connections    — show network connection table
+ *   processes      — list tracked processes with metadata
+ *   hooks          — show hook DLL status per process
  *
  * Flags:
  *   --json         — output raw JSON instead of formatted text
  *   --help / -h    — show usage
  *
  * P9-T1: Core CLI Commands.
+ * P9-T2: Inspection Commands.
  * Book reference: Chapter 1 — Agent Design, SOC Workflow.
  */
 
@@ -44,6 +48,9 @@ PrintUsage()
         "  alerts [N]       Show last N alerts (default: 20)\n"
         "  scan <path>      Trigger on-demand YARA scan on a file\n"
         "  rules reload     Hot-reload detection rules from disk\n"
+        "  connections      Show network connection table\n"
+        "  processes        List tracked processes with integrity level\n"
+        "  hooks            Show hook DLL status per process\n"
         "\n"
         "Flags:\n"
         "  --json           Output raw JSON\n"
@@ -316,6 +323,149 @@ PrintRulesReload(const std::string& json)
     std::printf("  Threshold:    %s\n", JsonGetValue(json, "threshold").c_str());
 }
 
+/* ── P9-T2: Inspection command printers ──────────────────────────────────── */
+
+static void
+PrintConnections(const std::string& json)
+{
+    std::string countStr = JsonGetValue(json, "count");
+    int total = atoi(countStr.c_str());
+
+    if (total == 0) {
+        std::printf("No connections recorded.\n");
+        return;
+    }
+
+    std::printf("Network Connection Table (%d entries)\n", total);
+    std::printf("%-18s %-7s %-6s %-7s %s\n",
+                "Remote", "Port", "Proto", "Hits", "PIDs");
+    std::printf("%-18s %-7s %-6s %-7s %s\n",
+                "------", "----", "-----", "----", "----");
+
+    size_t pos = json.find("\"connections\":[");
+    if (pos == std::string::npos) return;
+    pos += 15;
+
+    while (pos < json.size()) {
+        size_t objStart = json.find('{', pos);
+        if (objStart == std::string::npos) break;
+
+        /* Find matching } — need to skip nested [] for pids array */
+        int depth = 0;
+        size_t objEnd = objStart;
+        for (size_t i = objStart; i < json.size(); i++) {
+            if (json[i] == '{' || json[i] == '[') depth++;
+            else if (json[i] == '}' || json[i] == ']') {
+                depth--;
+                if (depth == 0) { objEnd = i; break; }
+            }
+        }
+        if (objEnd == objStart) break;
+
+        std::string entry = json.substr(objStart, objEnd - objStart + 1);
+
+        /* Extract PID array as string */
+        std::string pidsStr;
+        size_t pidsPos = entry.find("\"pids\":[");
+        if (pidsPos != std::string::npos) {
+            size_t pidsStart = pidsPos + 8;
+            size_t pidsEnd = entry.find(']', pidsStart);
+            if (pidsEnd != std::string::npos) {
+                pidsStr = entry.substr(pidsStart, pidsEnd - pidsStart);
+            }
+        }
+
+        std::printf("%-18s %-7s %-6s %-7s %s\n",
+                    JsonGetString(entry, "remote").c_str(),
+                    JsonGetValue(entry, "port").c_str(),
+                    JsonGetString(entry, "proto").c_str(),
+                    JsonGetValue(entry, "hits").c_str(),
+                    pidsStr.c_str());
+
+        pos = objEnd + 1;
+    }
+}
+
+static void
+PrintProcesses(const std::string& json)
+{
+    std::string countStr = JsonGetValue(json, "count");
+    int total = atoi(countStr.c_str());
+
+    if (total == 0) {
+        std::printf("No processes tracked.\n");
+        return;
+    }
+
+    std::printf("Tracked Processes (%d entries)\n", total);
+    std::printf("%-8s %-8s %-10s %-9s %-6s %s\n",
+                "PID", "PPID", "Integrity", "Elevated", "Alive", "Image");
+    std::printf("%-8s %-8s %-10s %-9s %-6s %s\n",
+                "---", "----", "---------", "--------", "-----", "-----");
+
+    size_t pos = json.find("\"processes\":[");
+    if (pos == std::string::npos) return;
+    pos += 13;
+
+    while (pos < json.size()) {
+        size_t objStart = json.find('{', pos);
+        if (objStart == std::string::npos) break;
+        size_t objEnd = json.find('}', objStart);
+        if (objEnd == std::string::npos) break;
+
+        std::string entry = json.substr(objStart, objEnd - objStart + 1);
+
+        std::printf("%-8s %-8s %-10s %-9s %-6s %s\n",
+                    JsonGetValue(entry, "pid").c_str(),
+                    JsonGetValue(entry, "ppid").c_str(),
+                    JsonGetString(entry, "integrity").c_str(),
+                    JsonGetValue(entry, "elevated").c_str(),
+                    JsonGetValue(entry, "alive").c_str(),
+                    JsonGetString(entry, "image").c_str());
+
+        pos = objEnd + 1;
+    }
+}
+
+static void
+PrintHooks(const std::string& json)
+{
+    std::string countStr = JsonGetValue(json, "count");
+    int total = atoi(countStr.c_str());
+
+    if (total == 0) {
+        std::printf("No alive processes tracked.\n");
+        return;
+    }
+
+    std::printf("Hook Status (%d alive processes)\n", total);
+    std::printf("%-8s %-8s %s\n",
+                "PID", "Hooked", "Image");
+    std::printf("%-8s %-8s %s\n",
+                "---", "------", "-----");
+
+    size_t pos = json.find("\"processes\":[");
+    if (pos == std::string::npos) return;
+    pos += 13;
+
+    while (pos < json.size()) {
+        size_t objStart = json.find('{', pos);
+        if (objStart == std::string::npos) break;
+        size_t objEnd = json.find('}', objStart);
+        if (objEnd == std::string::npos) break;
+
+        std::string entry = json.substr(objStart, objEnd - objStart + 1);
+
+        std::string hooked = JsonGetValue(entry, "hooked");
+        std::printf("%-8s %-8s %s\n",
+                    JsonGetValue(entry, "pid").c_str(),
+                    hooked == "true" ? "YES" : "no",
+                    JsonGetString(entry, "image").c_str());
+
+        pos = objEnd + 1;
+    }
+}
+
 /* ── Main ────────────────────────────────────────────────────────────────── */
 
 int main(int argc, char* argv[])
@@ -375,6 +525,15 @@ int main(int argc, char* argv[])
         }
         cmdType = SentinelCmdRulesReload;
 
+    } else if (strcmp(command, "connections") == 0) {
+        cmdType = SentinelCmdConnections;
+
+    } else if (strcmp(command, "processes") == 0) {
+        cmdType = SentinelCmdProcesses;
+
+    } else if (strcmp(command, "hooks") == 0) {
+        cmdType = SentinelCmdHooks;
+
     } else {
         std::fprintf(stderr, "Error: Unknown command '%s'\n\n", command);
         PrintUsage();
@@ -404,6 +563,9 @@ int main(int argc, char* argv[])
         case SentinelCmdAlerts:       PrintAlerts(json);       break;
         case SentinelCmdScan:         PrintScanResult(json);   break;
         case SentinelCmdRulesReload:  PrintRulesReload(json);  break;
+        case SentinelCmdConnections: PrintConnections(json);  break;
+        case SentinelCmdProcesses:   PrintProcesses(json);    break;
+        case SentinelCmdHooks:       PrintHooks(json);        break;
         default: std::printf("%s\n", json.c_str()); break;
         }
     }

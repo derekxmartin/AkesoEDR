@@ -6,6 +6,7 @@
  * dispatches commands, and returns JSON-encoded replies.
  *
  * P9-T1: Core CLI Commands.
+ * P9-T2: Inspection Commands (connections, processes, hooks).
  * Book reference: Chapter 1 — Agent Design.
  */
 
@@ -19,7 +20,9 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 #include <deque>
+#include <tlhelp32.h>       /* CreateToolhelp32Snapshot, Module32First/Next */
 
 /* ── Start / Stop ────────────────────────────────────────────────────────── */
 
@@ -195,6 +198,15 @@ CommandHandler::HandleClient(HANDLE hPipe)
     case SentinelCmdRulesReload:
         json = HandleRulesReload();
         break;
+    case SentinelCmdConnections:
+        json = HandleConnections();
+        break;
+    case SentinelCmdProcesses:
+        json = HandleProcesses();
+        break;
+    case SentinelCmdHooks:
+        json = HandleHooks();
+        break;
     default:
         json = "{\"error\":\"Unknown command\"}";
         status = 1;
@@ -350,6 +362,223 @@ CommandHandler::HandleRulesReload()
         counts.threshold);
 
     return buf;
+}
+
+/* ── P9-T2: Helpers ─────────────────────────────────────────────────────── */
+
+static std::string
+IpToString(ULONG addr)
+{
+    /* addr is in network byte order (big-endian) */
+    char buf[32];
+    _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%u.%u.%u.%u",
+                (addr) & 0xFF,
+                (addr >> 8) & 0xFF,
+                (addr >> 16) & 0xFF,
+                (addr >> 24) & 0xFF);
+    return buf;
+}
+
+static const char*
+IntegrityLevelName(ULONG rid)
+{
+    if (rid >= 0x4000) return "System";
+    if (rid >= 0x3000) return "High";
+    if (rid >= 0x2000) return "Medium";
+    if (rid >= 0x1000) return "Low";
+    return "Untrusted";
+}
+
+/*
+ * Check if a specific DLL is loaded in a process.
+ * Uses CreateToolhelp32Snapshot + Module32FirstW/NextW.
+ */
+static bool
+IsModuleLoaded(ULONG pid, const wchar_t* dllName)
+{
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
+    if (hSnap == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+
+    MODULEENTRY32W me = {};
+    me.dwSize = sizeof(me);
+
+    if (Module32FirstW(hSnap, &me)) {
+        do {
+            if (_wcsicmp(me.szModule, dllName) == 0) {
+                CloseHandle(hSnap);
+                return true;
+            }
+        } while (Module32NextW(hSnap, &me));
+    }
+
+    CloseHandle(hSnap);
+    return false;
+}
+
+static std::string
+NarrowPath(const std::wstring& wide)
+{
+    if (wide.empty()) return "";
+    char buf[SENTINEL_MAX_PATH];
+    WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1,
+                        buf, sizeof(buf), nullptr, nullptr);
+    return buf;
+}
+
+/*
+ * Escape backslashes in a string for JSON output.
+ * Skips already-escaped sequences (\\ and \").
+ */
+static void
+JsonEscapeBackslashes(std::string& s)
+{
+    size_t pos = 0;
+    while ((pos = s.find('\\', pos)) != std::string::npos) {
+        if (pos + 1 < s.size() && (s[pos + 1] == '\\' || s[pos + 1] == '"')) {
+            pos += 2;
+        } else {
+            s.insert(pos, 1, '\\');
+            pos += 2;
+        }
+    }
+}
+
+/* ── P9-T2: Inspection command handlers ─────────────────────────────────── */
+
+std::string
+CommandHandler::HandleConnections()
+{
+    std::vector<ConnectionEntry> entries;
+    m_processor->GetNetworkTable().GetSnapshot(entries);
+
+    std::string json = "{\"count\":";
+    json += std::to_string(entries.size());
+    json += ",\"connections\":[";
+
+    bool first = true;
+    for (const auto& conn : entries) {
+        if (!first) json += ",";
+        first = false;
+
+        char entry[512];
+        _snprintf_s(entry, sizeof(entry), _TRUNCATE,
+            "{\"remote\":\"%s\","
+            "\"port\":%u,"
+            "\"proto\":\"%s\","
+            "\"hits\":%llu,"
+            "\"pids\":[",
+            IpToString(conn.RemoteAddr).c_str(),
+            (unsigned)conn.RemotePort,
+            conn.Protocol == 6 ? "TCP" : (conn.Protocol == 17 ? "UDP" : "Other"),
+            conn.ConnectionCount);
+
+        json += entry;
+
+        /* PID list */
+        bool firstPid = true;
+        for (ULONG pid : conn.Pids) {
+            if (!firstPid) json += ",";
+            firstPid = false;
+            json += std::to_string(pid);
+        }
+
+        json += "]}";
+    }
+
+    json += "]}";
+    return json;
+}
+
+std::string
+CommandHandler::HandleProcesses()
+{
+    std::vector<ProcessEntry> entries;
+    m_processor->GetProcessTable().GetSnapshot(entries);
+
+    std::string json = "{\"count\":";
+    json += std::to_string(entries.size());
+    json += ",\"processes\":[";
+
+    bool first = true;
+    for (const auto& proc : entries) {
+        if (!first) json += ",";
+        first = false;
+
+        std::string imagePath = NarrowPath(proc.ImagePath);
+
+        char entry[1024];
+        _snprintf_s(entry, sizeof(entry), _TRUNCATE,
+            "{\"pid\":%lu,"
+            "\"ppid\":%lu,"
+            "\"image\":\"%s\","
+            "\"integrity\":\"%s\","
+            "\"elevated\":%s,"
+            "\"alive\":%s}",
+            proc.Pid,
+            proc.ParentPid,
+            imagePath.c_str(),
+            IntegrityLevelName(proc.IntegrityLevel),
+            proc.IsElevated ? "true" : "false",
+            proc.Alive ? "true" : "false");
+
+        std::string entryStr = entry;
+        JsonEscapeBackslashes(entryStr);
+        json += entryStr;
+    }
+
+    json += "]}";
+    return json;
+}
+
+std::string
+CommandHandler::HandleHooks()
+{
+    std::vector<ProcessEntry> entries;
+    m_processor->GetProcessTable().GetSnapshot(entries);
+
+    std::string json = "{\"count\":0,\"processes\":[";
+
+    int count = 0;
+    bool first = true;
+    for (const auto& proc : entries) {
+        if (!proc.Alive) continue;  /* Only check alive processes */
+
+        bool hooked = IsModuleLoaded(proc.Pid, L"sentinel-hook.dll");
+
+        if (!first) json += ",";
+        first = false;
+
+        std::string imagePath = NarrowPath(proc.ImagePath);
+
+        char entry[1024];
+        _snprintf_s(entry, sizeof(entry), _TRUNCATE,
+            "{\"pid\":%lu,"
+            "\"image\":\"%s\","
+            "\"hooked\":%s}",
+            proc.Pid,
+            imagePath.c_str(),
+            hooked ? "true" : "false");
+
+        std::string entryStr = entry;
+        JsonEscapeBackslashes(entryStr);
+        json += entryStr;
+        count++;
+    }
+
+    json += "]}";
+
+    /* Patch the count at the beginning */
+    std::string countStr = std::to_string(count);
+    size_t countPos = json.find("\"count\":");
+    if (countPos != std::string::npos) {
+        size_t valStart = countPos + 8;  /* length of "count": */
+        size_t valEnd = json.find(',', valStart);
+        json.replace(valStart, valEnd - valStart, countStr);
+    }
+
+    return json;
 }
 
 /* ── Reply helper ────────────────────────────────────────────────────────── */
