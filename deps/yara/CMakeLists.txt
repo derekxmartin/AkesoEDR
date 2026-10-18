@@ -14,8 +14,12 @@
 
 cmake_minimum_required(VERSION 3.20)
 
-# Path to cloned YARA source (sibling to claude-edr)
-set(YARA_SRC "C:/Users/derek/Desktop/Projects/yara-build")
+# Path to an unmodified YARA v4.5.2 source checkout.
+# Override with -DYARA_SRC=/path/to/yara; no developer-specific path is required.
+set(YARA_SRC "${CMAKE_SOURCE_DIR}/.deps/yara" CACHE PATH "YARA v4.5.2 source directory")
+if(NOT EXISTS "${YARA_SRC}/libyara/include/yara.h")
+    message(FATAL_ERROR "YARA source not found. Clone VirusTotal/yara v4.5.2 and set -DYARA_SRC to its directory.")
+endif()
 
 # ── Collect source files ────────────────────────────────────────────────────
 
