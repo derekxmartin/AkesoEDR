@@ -1,0 +1,34 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-user-mode:
+    name: windows-user-mode
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Fetch pinned YARA source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: VirusTotal/yara
+          ref: v4.5.2
+          path: .deps/yara
+          persist-credentials: false
+      - name: Configure user-mode build
+        run: cmake -S . -B build -A x64 -DYARA_SRC="${{ github.workspace }}/.deps/yara"
+      - run: cmake --build build --config Release --parallel
+      - name: IPC round-trip test
+        run: ctest --test-dir build -C Release --output-on-failure --no-tests=error

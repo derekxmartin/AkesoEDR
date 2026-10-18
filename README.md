@@ -425,7 +425,7 @@ The minifilter detects the file creation, computes a SHA-256 hash, and the on-ac
 ## Project Structure
 
 ```
-claude-edr/
+AkesoEDR/
 ├── CMakeLists.txt              Top-level build configuration
 ├── akesoedr.conf               Default agent configuration file
 ├── common/                     Shared headers
@@ -507,12 +507,18 @@ claude-edr/
 | P7 | ETW consumer (8 providers) and custom AMSI provider | Done |
 | P8 | YARA scanner integration, on-access scanning, memory scanning | Done |
 | P9 | CLI management tool, inspection commands, configuration file | Done |
-| P10 | Integration testing (end-to-end attack chain) | Pending |
-| P11 | Hardening and self-protection (evasion detection) | Pending |
+| P10 | Integration testing (end-to-end attack chain) | Merged; see validation scope below |
+| P11 | Hardening and self-protection (evasion detection) | Merged; separate Windows lab validation required |
 
 See `REQUIREMENTS.md` for the full implementation roadmap.
 
 ---
+
+## Validation scope
+
+P10 and P11 were merged in [PR #43](https://github.com/derekxmartin/AkesoEDR/pull/43) and [PR #44](https://github.com/derekxmartin/AkesoEDR/pull/44). The [March 26, 2026 test report](docs/test_report.md) records eight simulated phases and its workarounds, including the XLL issue. It is historical evidence for that lab configuration, not a fresh result for every commit.
+
+The CI workflow builds user-mode components and runs the IPC round-trip test on Windows. Driver deployment, AMSI registration, tamper resistance, and the full attack-chain exercise require an isolated Windows VM; they are not established by that CI check. See [CONTRIBUTING.md](CONTRIBUTING.md) for the configurable YARA source path.
 
 ## License
 
